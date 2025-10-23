@@ -8,66 +8,71 @@
 # the Free Software Foundation, either version 2 of the License, or
 # (at your option) any later version.
 #
+
 # --- Configuration ---
-# Set the repository name for pacman (must match [adr-stable] in pacman.conf)
 REPO_NAME="adr-stable"
-# Directory to store the actual packages (binaries)
-REPO_DIR="packages"
-# Arch architecture (using aarch64 as per your Trch efforts)
-ARCH="aarch64"
-# Official mirror to sync from
-ARCH_MIRROR="rsync://mirror.archlinuxarm.org/armv8/core/"
-# ARCH_MIRROR="rsync://mirror.archlinux.org/community/" # Example if syncing x86_64 community
+# المجلد الذي يحتوي على الحزم وقواعد البيانات
+REPO_DIR="repo" 
 
 echo "--- ADR Repository Builder Started ---"
 
-# --- 1. Setup Environment ---
-mkdir -p "$REPO_DIR"
+# --- 1. اكتشاف معمارية الجهاز وتحديد الرابط ---
+ARCH=$(uname -m)
+
+if [ "$ARCH" == "aarch64" ]; then
+    ARCH_MIRROR="rsync://mirror.archlinuxarm.org/armv8/core/"
+elif [ "$ARCH" == "x86_64" ]; then
+    ARCH_MIRROR="rsync://mirror.archlinux.org/core/"
+else
+    echo "❌ ERROR: Architecture $ARCH not officially supported by this script."
+    exit 1
+fi
+
+echo "✅ Detected Architecture: $ARCH"
+echo "✅ Syncing packages from Mirror: $ARCH_MIRROR"
+
+# --- 2. التحقق من وجود مجلد الحزم والانتقال إليه ---
+if [ ! -d "$REPO_DIR" ]; then
+    echo "❌ ERROR: Repository directory '$REPO_DIR' not found. Please run 'mkdir $REPO_DIR' in the root."
+    exit 1
+fi
 cd "$REPO_DIR"
 
-# --- 2. Synchronize Packages from Official Mirror (rsync) ---
-echo "1. Syncing packages from $ARCH_MIRROR..."
-# Pulling only the package files (.pkg.tar.zst) that are newer than local files.
-# We're using the "core" repository as a starting point.
-rsync -aLv "$ARCH_MIRROR" ./ --include '**.pkg.tar.zst' --exclude '*'
+# --- 3. مزامنة الحزم من الميرور الرسمي (rsync) ---
+echo "3. Syncing packages from official Arch core repository..."
+# نسحب ملفات الحزم الثنائية فقط (.pkg.tar.zst)
+rsync -rtlDv "$ARCH_MIRROR" ./ --include '**.pkg.tar.zst' --exclude '*'
 
 if [ $? -ne 0 ]; then
     echo "❌ ERROR: rsync failed. Check network connection or mirror URL."
     exit 1
 fi
 
-# --- 3. Build Pacman Database (repo-add) ---
-echo "2. Building Pacman database: $REPO_NAME.db.tar.gz..."
+# --- 4. بناء قاعدة بيانات Pacman (repo-add) ---
+echo "4. Building Pacman database: $REPO_NAME.db.tar.gz..."
 
-# The 'repo-add' command creates/updates the repository database file,
-# indexing all package files (*.pkg.tar.zst) in the current directory.
+# العودة للخلف لاستخدام مسار صحيح لملف قاعدة البيانات
+# إنشاء/تحديث قاعدة بيانات المستودع
 repo-add "../$REPO_NAME.db.tar.gz" *.pkg.tar.zst
 
-# repo-add outputs the database file one level up (../)
 DB_FILE="../$REPO_NAME.db.tar.gz"
 
 if [ ! -f "$DB_FILE" ]; then
     echo "❌ ERROR: Database file $DB_FILE was not created."
+    cd ..
     exit 1
 fi
-echo "✅ Database created successfully."
+echo "✅ Database created successfully for $ARCH."
 
-# --- 4. Git Operations & Deployment ---
-cd .. # Go back to the root of the adr-repo directory
+# --- 5. الانتهاء وإصدار التعليمات اليدوية ---
+cd .. # العودة إلى جذر adr-repo
 
-echo "3. Committing and pushing changes to GitHub..."
-
-# Add all changes: new packages, database files (.db, .files), etc.
-git add "$REPO_DIR" "$REPO_NAME.db.tar.gz" "$REPO_NAME.files.tar.gz"
-git commit -m "ADR Build: Automated update with latest packages for $ARCH ($(date +%Y-%m-%d))"
-
-# Push using the configured SSH key
-git push origin main 
-
-if [ $? -ne 0 ]; then
-    echo "❌ ERROR: Git push failed. Check your SSH key configuration or permissions on the repo."
-    exit 1
-fi
-
-echo "--- ADR Build Complete. Repository deployed to GitHub Pages! ---"
+echo "--- ADR Build Complete. Files are ready for Git commit. ---"
+echo "
+⭐ MANUAL GIT STEP REQUIRED:
+1. Check changes: git status
+2. Add files: git add repo/ $REPO_NAME.db.tar.gz $REPO_NAME.files.tar.gz
+3. Commit: git commit -m \"ADR Sync: $(date +%Y-%m-%d)\"
+4. Push: git push origin main
+"
 
