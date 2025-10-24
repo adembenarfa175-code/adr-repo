@@ -1,10 +1,9 @@
 #!/bin/bash
 #
-# APM (ADR Package Manager) Build Script
-# Mode: Empty Database Creation (Final Solution)
+# APM (ADR Package Manager) Build Script - FINAL VERSION
+# Mode: Multi-Architecture Database Creation (Guaranteed Success)
 #
-# This script creates a valid, empty adr-stable.db.tar.gz file, 
-# resolving the persistent 404 error on GitHub Pages.
+# هذا السكريبت يتجاوز عناد 'repo-add' لضمان إنشاء قواعد بيانات فارغة.
 #
 # Copyright (C) YEAR adembenarfa175-code <adembenarfa175@Gmail.com>
 # Licensed under GPLv2
@@ -12,49 +11,53 @@
 
 # --- Configuration ---
 REPO_NAME="adr-stable"
-REPO_DIR="repo" 
-DB_FILE="$REPO_NAME.db.tar.gz"
+REPO_ROOT="repo"
 
-echo "--- ADR Empty Database Creator Started ---"
-
-# --- 1. Detect Architecture (For Git Message) ---
-ARCH=$(uname -m)
-echo "✅ Detected Architecture: $ARCH"
-
-# --- 2. Check for the repo directory ---
-if [ ! -d "$REPO_DIR" ]; then
-    echo "❌ ERROR: Repository directory '$REPO_DIR' not found. Please run 'mkdir $REPO_DIR'."
+# --- 1. اكتشاف المعمارية (من المتغير) ---
+TARGET_ARCH="$1"
+if [ -z "$TARGET_ARCH" ]; then
+    echo "❌ ERROR: Architecture not specified. Usage: ./adr-sync-and-build.sh <arch>"
     exit 1
 fi
+ARCH="$TARGET_ARCH"
+echo "✅ Target Architecture: $ARCH"
 
-# --- 3. Manually Create the Empty Database File ---
-echo "3. Manually creating empty database file: $DB_FILE..."
+# تعريف المسارات الجديدة
+REPO_ARCH_DIR="$REPO_ROOT/$ARCH"
+DB_FILE="${REPO_NAME}.db.tar.gz"
+FILES_FILE="${REPO_NAME}.files.tar.gz"
 
-# Create a temporary empty directory for the archive content
-mkdir -p "$REPO_DIR/temp_db"
+# --- 2. التحقق من وجود مجلد المعمارية والتهيئ ---
+if [ ! -d "$REPO_ARCH_DIR" ]; then
+    echo ":: Creating architecture directory: $REPO_ARCH_DIR"
+    mkdir -p "$REPO_ARCH_DIR"
+fi
 
-# Create the compressed tarball containing nothing (or just the directory structure)
-# This results in a valid, empty compressed file that Pacman can read without error.
-tar -czf "$DB_FILE" -C "$REPO_DIR/temp_db" .
+# المسار الكامل لقاعدة البيانات داخل مجلد المعمارية
+FULL_DB_PATH="$REPO_ARCH_DIR/$DB_FILE"
+FULL_FILES_PATH="$REPO_ARCH_DIR/$FILES_FILE"
 
-# Clean up the temporary directory
-rm -rf "$REPO_DIR/temp_db"
+# --- 3. بناء قاعدة بيانات Pacman يدوياً (Bypass repo-add) ---
+echo "3. Manually ensuring database files exist for $ARCH..."
 
-# Also create the .files archive which Pacman also expects
-touch "$REPO_NAME.files.tar.gz"
+# 3a. إنشاء قاعدة البيانات الرئيسية (ملف مضغوط فارغ وصالح)
+# هذا هو الحل الذي نجح سابقاً: إنشاء أرشيف tar/gz فارغ.
+tar -czf "$FULL_DB_PATH" -C /dev/null . 
+echo ":: Created empty database file: $FULL_DB_PATH"
 
-if [ ! -f "$DB_FILE" ]; then
-    echo "❌ ERROR: Database file $DB_FILE was not created."
+# 3b. إنشاء ملف الفهرس (files) (ملف وهمي يكفي هنا)
+touch "$FULL_FILES_PATH"
+echo ":: Created empty files index: $FULL_FILES_PATH"
+
+if [ ! -f "$FULL_DB_PATH" ]; then
+    echo "❌ ERROR: Database file $FULL_DB_PATH was not created."
     exit 1
 fi
-echo "✅ Empty database created successfully."
+echo "✅ Database files created successfully for $ARCH."
 
-# --- 4. Final Instructions ---
-echo "--- ADR Database Creation Complete. ---"
+# --- 4. الانتهاء وإصدار التعليمات اليدوية ---
+
+echo "--- ADR DB Build Complete for $ARCH. Files are ready for Git commit. ---"
 echo "
-⭐ MANUAL GIT STEP REQUIRED (Final Deployment):
-1. Add files: git add .
-2. Commit: git commit -m \"ADR Initial Release: Valid empty DB deployed for $ARCH.\"
-3. Push: git push origin main
+⭐ GIT STATUS: Files in $REPO_ARCH_DIR are ready for push.
 "
-

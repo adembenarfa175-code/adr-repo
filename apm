@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # APM (ADR Package Manager)
+# Final Multi-Architecture Version
 #
 # Copyright (C) YEAR adembenarfa175-code <adembenarfa175@Gmail.com>
 # Licensed under GPLv2
@@ -35,7 +36,6 @@ add_repo() {
         exit 1
     fi
 
-    # The actual config block to be added
     REPO_CONFIG="$REPO_CONF_START
 # Added by APM (ADR Package Manager)
 [${REPO_NAME}]
@@ -43,7 +43,6 @@ SigLevel = Optional TrustAll
 Server = https://adembenarfa175-code.github.io/adr-repo/\$arch
 ${REPO_CONF_END}"
 
-    # Check if config already exists
     if grep -q "\[${REPO_NAME}\]" "$PACMAN_CONF"; then
         echo "⚠️ Repository [${REPO_NAME}] already exists in $PACMAN_CONF. Skipping addition."
     else
@@ -56,41 +55,25 @@ ${REPO_CONF_END}"
     sudo pacman -Syy --ignore $REPO_NAME
 }
 
-# apm remove: Removes the repository definition from pacman.conf
-remove_repo() {
-    if [ ! -w "$PACMAN_CONF" ]; then
-        echo "❌ ERROR: Cannot write to $PACMAN_CONF. Please run with sudo."
-        exit 1
-    fi
-
-    if grep -q "\[${REPO_NAME}\]" "$PACMAN_CONF"; then
-        echo ":: Removing [${REPO_NAME}] repository from $PACMAN_CONF..."
-        # Use sed to remove the config block between START and END markers
-        sudo sed -i "/${REPO_CONF_START}/,/${REPO_CONF_END}/d" "$PACMAN_CONF"
-        echo "✅ Repository removed successfully."
-    else
-        echo "⚠️ Repository [${REPO_NAME}] was not found in $PACMAN_CONF."
-    fi
-}
-
 # apm sync: Runs the build script and publishes changes (NEW)
 sync_repo() {
-    echo ":: Starting full repository sync and database rebuild..."
+    # قراءة المعمارية من المتغير الثاني (افتراضياً aarch64)
+    TARGET_ARCH="${2:-aarch64}"
+    
+    echo ":: Starting repository sync and database rebuild for [$TARGET_ARCH]..."
 
-    # Check for the build script
     if [ ! -x "./adr-sync-and-build.sh" ]; then
         echo "❌ ERROR: Build script 'adr-sync-and-build.sh' not found or is not executable."
         exit 1
     fi
 
-    # Run the build script
-    ./adr-sync-and-build.sh
+    # تمرير المعمارية كمتغير لـ adr-sync-and-build.sh
+    ./adr-sync-and-build.sh "$TARGET_ARCH"
     if [ $? -ne 0 ]; then
         echo "❌ ERROR: Repository build script failed. Aborting push."
         exit 1
     fi
 
-    # Publish the changes
     git_sync_push
 }
 
@@ -101,17 +84,26 @@ case "$1" in
         add_repo
         ;;
     remove)
-        remove_repo
+        if [ ! -w "$PACMAN_CONF" ]; then
+            echo "❌ ERROR: Cannot write to $PACMAN_CONF. Please run with sudo."
+            exit 1
+        fi
+        if grep -q "\[${REPO_NAME}\]" "$PACMAN_CONF"; then
+            echo ":: Removing [${REPO_NAME}] repository from $PACMAN_CONF..."
+            sudo sed -i "/${REPO_CONF_START}/,/${REPO_CONF_END}/d" "$PACMAN_CONF"
+            echo "✅ Repository removed successfully."
+        else
+            echo "⚠️ Repository [${REPO_NAME}] was not found in $PACMAN_CONF."
+        fi
         ;;
     sync)
-        sync_repo
+        sync_repo "$@" # تمرير جميع المتغيرات إلى sync_repo
         ;;
     *)
-        echo "Usage: ./apm <command>"
+        echo "Usage: ./apm <command> [arch]"
         echo "Commands:"
         echo "  add     - Add the [${REPO_NAME}] repository to $PACMAN_CONF."
         echo "  remove  - Remove the [${REPO_NAME}] repository from $PACMAN_CONF."
-        echo "  sync    - Run the build script and publish the new database (requires Git setup)."
+        echo "  sync [arch] - Run the build script and publish the new database (e.g., ./apm sync x86_64)."
         ;;
 esac
-
