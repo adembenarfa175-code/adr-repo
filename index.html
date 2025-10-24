@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>ADR Repository - Arch Developers Repositories</title>
+</head>
+<body>
+    <h1>مستودع حزم ADR (Arch Developers Repositories)</h1>
+    <p>هذا المستودع مخصص لاستضافة حزم Pacman الخاصة بمشروع ADR.</p>
+    <p>لإضافة المستودع إلى نظام Arch Linux/Trch Linux الخاص بك، أضف السطر التالي إلى ملف pacman.conf:</p>
+    <pre>
+[adr-stable]
+SigLevel = Optional TrustAll
+Server = https://adembenarfa175-code.github.io/adr-repo/$arch
+    </pre>
+    <p><strong>تاريخ آخر تحديث لقاعدة البيانات:</strong> <span id="last_updated">جارٍ التحميل...</span></p>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // يمكن هنا إضافة سكريبت لفحص ملف DB إذا أردت، لكن الهدف الأساسي هو إزالة الـ 404
+            const updateElement = document.getElementById('last_updated');
+            updateElement.textContent = new Date().toLocaleString('ar-EG', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        });
+    </script>
+</body>
+</html>
+
