@@ -1,0 +1,81 @@
+#!/bin/bash
+#
+# APM (ADR Package Manager) - Smart Wrapper for Pacman
+#
+# Copyright (C) YEAR adembenarfa175-code <adembenarfa175@Gmail.com>
+# Licensed under GPLv2
+#
+
+# --- 1. Configurations & Constants ---
+ADR_REPO_NAME="adr-stable"
+ADR_SERVER="https://adembenarfa175-code.github.io/adr-repo/\$arch"
+PACMAN_CONF="/etc/pacman.conf"
+
+# --- 2. Function to Add ADR Repository ---
+apm_add() {
+    echo ":: Adding [$ADR_REPO_NAME] repository to $PACMAN_CONF..."
+
+    # التحقق مما إذا كان المستودع موجودًا بالفعل
+    if grep -q "\[$ADR_REPO_NAME\]" "$PACMAN_CONF"; then
+        echo ":: [$ADR_REPO_NAME] is already configured. Exiting."
+        return 0
+    fi
+
+    # إضافة تعريف المستودع إلى نهاية pacman.conf
+    sudo tee -a "$PACMAN_CONF" > /dev/null << EOF
+
+# ----------------------------------------------------------------------
+# Added by APM (ADR Package Manager)
+[${ADR_REPO_NAME}]
+SigLevel = Optional TrustAll
+Server = ${ADR_SERVER}
+# ----------------------------------------------------------------------
+EOF
+
+    if [ $? -eq 0 ]; then
+        echo "✅ Repository added successfully."
+        echo ":: Running initial Pacman database sync..."
+        sudo pacman -Syy # مزامنة قاعدة البيانات
+    else
+        echo "❌ ERROR: Failed to write to $PACMAN_CONF. Check permissions."
+    fi
+}
+
+# --- 3. Function to Remove ADR Repository ---
+apm_remove() {
+    echo ":: Removing [$ADR_REPO_NAME] repository from $PACMAN_CONF..."
+
+    # استخدام sed لحذف تعريف المستودع بالكامل
+    # (البحث عن البداية والنهاية وإزالتها)
+    sudo sed -i '/# Added by APM (ADR Package Manager)/,/# ----------------------------------------------------------------------/d' "$PACMAN_CONF"
+    
+    # محاولة إزالة السطر [adr-stable] إذا لم يتم العثور على العلامات
+    sudo sed -i '/\['"$ADR_REPO_NAME"'\]/d' "$PACMAN_CONF"
+
+    if [ $? -eq 0 ]; then
+        echo "✅ Repository removed successfully."
+        sudo pacman -Syy
+    else
+        echo "❌ ERROR: Failed to modify $PACMAN_CONF. Check permissions."
+    fi
+}
+
+# --- 4. Main Command Line Interface ---
+case "$1" in
+    add)
+        apm_add
+        ;;
+    remove)
+        apm_remove
+        ;;
+    # توجيه الأوامر الأخرى إلى pacman (مثلاً: apm install package)
+    *)
+        if command -v pacman > /dev/null; then
+            echo ":: Passing command to pacman..."
+            sudo pacman "$@"
+        else
+            echo "❌ ERROR: Pacman not found. APM requires an Arch Linux environment."
+        fi
+        ;;
+esac
+
