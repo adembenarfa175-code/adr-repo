@@ -1,81 +1,117 @@
 #!/bin/bash
 #
-# APM (ADR Package Manager) - Smart Wrapper for Pacman
+# APM (ADR Package Manager)
 #
 # Copyright (C) YEAR adembenarfa175-code <adembenarfa175@Gmail.com>
 # Licensed under GPLv2
-#
 
-# --- 1. Configurations & Constants ---
-ADR_REPO_NAME="adr-stable"
-ADR_SERVER="https://adembenarfa175-code.github.io/adr-repo/\$arch"
+# --- Variables ---
+REPO_NAME="adr-stable"
 PACMAN_CONF="/etc/pacman.conf"
+REPO_CONF_START="# --- ADR Repository Configuration Start ---"
+REPO_CONF_END="# --- ADR Repository Configuration End ---"
 
-# --- 2. Function to Add ADR Repository ---
-apm_add() {
-    echo ":: Adding [$ADR_REPO_NAME] repository to $PACMAN_CONF..."
+# --- Functions: Helper Functions ---
 
-    # التحقق مما إذا كان المستودع موجودًا بالفعل
-    if grep -q "\[$ADR_REPO_NAME\]" "$PACMAN_CONF"; then
-        echo ":: [$ADR_REPO_NAME] is already configured. Exiting."
-        return 0
+# Function to run the build script and push changes
+git_sync_push() {
+    echo ":: Committing and pushing changes to GitHub Pages..."
+    git add .
+    git commit -m "APM Sync ($(uname -m)): Automated database and package update."
+    if git push origin main; then
+        echo "✅ Changes pushed successfully to GitHub."
+    else
+        echo "❌ ERROR: Git push failed. Please resolve Git issues and push manually."
+        exit 1
+    fi
+}
+
+# --- Functions: Core APM Commands ---
+
+# apm add: Adds the repository definition to pacman.conf
+add_repo() {
+    if [ ! -w "$PACMAN_CONF" ]; then
+        echo "❌ ERROR: Cannot write to $PACMAN_CONF. Please run with sudo."
+        exit 1
     fi
 
-    # إضافة تعريف المستودع إلى نهاية pacman.conf
-    sudo tee -a "$PACMAN_CONF" > /dev/null << EOF
-
-# ----------------------------------------------------------------------
+    # The actual config block to be added
+    REPO_CONFIG="$REPO_CONF_START
 # Added by APM (ADR Package Manager)
-[${ADR_REPO_NAME}]
+[${REPO_NAME}]
 SigLevel = Optional TrustAll
-Server = ${ADR_SERVER}
-# ----------------------------------------------------------------------
-EOF
+Server = https://adembenarfa175-code.github.io/adr-repo/\$arch
+${REPO_CONF_END}"
 
-    if [ $? -eq 0 ]; then
+    # Check if config already exists
+    if grep -q "\[${REPO_NAME}\]" "$PACMAN_CONF"; then
+        echo "⚠️ Repository [${REPO_NAME}] already exists in $PACMAN_CONF. Skipping addition."
+    else
+        echo ":: Adding [${REPO_NAME}] repository to $PACMAN_CONF..."
+        echo "$REPO_CONFIG" | sudo tee -a "$PACMAN_CONF" > /dev/null
         echo "✅ Repository added successfully."
-        echo ":: Running initial Pacman database sync..."
-        sudo pacman -Syy # مزامنة قاعدة البيانات
-    else
-        echo "❌ ERROR: Failed to write to $PACMAN_CONF. Check permissions."
     fi
+
+    echo ":: Running initial Pacman database sync..."
+    sudo pacman -Syy --ignore $REPO_NAME
 }
 
-# --- 3. Function to Remove ADR Repository ---
-apm_remove() {
-    echo ":: Removing [$ADR_REPO_NAME] repository from $PACMAN_CONF..."
+# apm remove: Removes the repository definition from pacman.conf
+remove_repo() {
+    if [ ! -w "$PACMAN_CONF" ]; then
+        echo "❌ ERROR: Cannot write to $PACMAN_CONF. Please run with sudo."
+        exit 1
+    fi
 
-    # استخدام sed لحذف تعريف المستودع بالكامل
-    # (البحث عن البداية والنهاية وإزالتها)
-    sudo sed -i '/# Added by APM (ADR Package Manager)/,/# ----------------------------------------------------------------------/d' "$PACMAN_CONF"
-    
-    # محاولة إزالة السطر [adr-stable] إذا لم يتم العثور على العلامات
-    sudo sed -i '/\['"$ADR_REPO_NAME"'\]/d' "$PACMAN_CONF"
-
-    if [ $? -eq 0 ]; then
+    if grep -q "\[${REPO_NAME}\]" "$PACMAN_CONF"; then
+        echo ":: Removing [${REPO_NAME}] repository from $PACMAN_CONF..."
+        # Use sed to remove the config block between START and END markers
+        sudo sed -i "/${REPO_CONF_START}/,/${REPO_CONF_END}/d" "$PACMAN_CONF"
         echo "✅ Repository removed successfully."
-        sudo pacman -Syy
     else
-        echo "❌ ERROR: Failed to modify $PACMAN_CONF. Check permissions."
+        echo "⚠️ Repository [${REPO_NAME}] was not found in $PACMAN_CONF."
     fi
 }
 
-# --- 4. Main Command Line Interface ---
+# apm sync: Runs the build script and publishes changes (NEW)
+sync_repo() {
+    echo ":: Starting full repository sync and database rebuild..."
+
+    # Check for the build script
+    if [ ! -x "./adr-sync-and-build.sh" ]; then
+        echo "❌ ERROR: Build script 'adr-sync-and-build.sh' not found or is not executable."
+        exit 1
+    fi
+
+    # Run the build script
+    ./adr-sync-and-build.sh
+    if [ $? -ne 0 ]; then
+        echo "❌ ERROR: Repository build script failed. Aborting push."
+        exit 1
+    fi
+
+    # Publish the changes
+    git_sync_push
+}
+
+# --- Main Logic ---
+
 case "$1" in
     add)
-        apm_add
+        add_repo
         ;;
     remove)
-        apm_remove
+        remove_repo
         ;;
-    # توجيه الأوامر الأخرى إلى pacman (مثلاً: apm install package)
+    sync)
+        sync_repo
+        ;;
     *)
-        if command -v pacman > /dev/null; then
-            echo ":: Passing command to pacman..."
-            sudo pacman "$@"
-        else
-            echo "❌ ERROR: Pacman not found. APM requires an Arch Linux environment."
-        fi
+        echo "Usage: ./apm <command>"
+        echo "Commands:"
+        echo "  add     - Add the [${REPO_NAME}] repository to $PACMAN_CONF."
+        echo "  remove  - Remove the [${REPO_NAME}] repository from $PACMAN_CONF."
+        echo "  sync    - Run the build script and publish the new database (requires Git setup)."
         ;;
 esac
 
